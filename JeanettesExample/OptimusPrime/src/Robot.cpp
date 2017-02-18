@@ -8,13 +8,15 @@
  * WPILib docs: http://first.wpi.edu/FRC/roborio/release/docs/cpp/index.html
  * (look at Classes/Class List/frc)
  * FRC C++ Programming guide: C:\Users\cecrobotics\Desktop\FRC_C___Programming
- * Using the joysticks: http://wpilib.screenstepslive.com/s/3120/m/7912/l/133053-joysticks
+ * Using the joysticks:jhjh http://wpilib.screenstepslive.com/s/3120/m/7912/l/133053-joysticks
+ * TIMER DOCUMENTATION: (note getfpgatime) http://first.wpi.edu/FRC/roborio/release/docs/cpp/classfrc_1_1Timer.html#a5f16e8da27d2a5a5242dead46de05d97
  */
 
 #include <iostream>
 #include <memory>
 #include <string>
 
+#include <Timer.h>
 #include <WPILib.h>
 #include <IterativeRobot.h>
 #include <LiveWindow/LiveWindow.h>
@@ -22,27 +24,31 @@
 #include <SmartDashboard/SmartDashboard.h>
 
 class Robot: public frc::IterativeRobot {
-	frc::Talon leftDrive1;
-	frc::Talon leftDrive2;
-	frc::Talon rightDrive1;
-	frc::Talon rightDrive2;
+	frc::RobotDrive drive;
 	frc::Talon lift;
 	frc::Talon intake;
 	frc::Talon shooter;
 	frc::Talon agitator;
 	frc::Joystick stick1 {0};
 	frc::Joystick stick2 {1};
-
+	frc::Timer shooterTimer;
+	frc::Timer autoTimer;
+	bool intakeRun; //true if the intake is running
+	bool intakeLast; //true if the intake button was pressed last time through the periodic loop
+	double agitatorDelay = 2;
+	double autoPeriod = 3;
+	double revAgitator = 1;
 public:
 	Robot() : //Order matters - this should match what's above
-		leftDrive1(0),
-		leftDrive2(1),
-		rightDrive1(2),
-		rightDrive2(3),
+		drive(0,1,2,3),
 		lift(4),
 		intake(5),
 		shooter(6),
-		agitator(7) {
+		agitator(7),
+		shooterTimer(),
+		autoTimer(),
+		intakeRun(),
+		intakeLast() {
 
 	}
 
@@ -64,44 +70,78 @@ public:
 	 * SendableChooser make sure to add them to the chooser code above as well.
 	 */
 	void AutonomousInit() override {
-		autoSelected = chooser.GetSelected();
-		// std::string autoSelected = SmartDashboard::GetString("Auto Selector", autoNameDefault);
-		std::cout << "Auto selected: " << autoSelected << std::endl;
-
-		if (autoSelected == autoNameCustom) {
-			// Custom Auto goes here
-		} else {
-			// Default Auto goes here
-		}
+		autoTimer.Stop();
+		autoTimer.Reset();
 	}
 
 	void AutonomousPeriodic() {
-		if (autoSelected == autoNameCustom) {
-			// Custom Auto goes here
-		} else {
-			// Default Auto goes here
-		}
+		autoTimer.Start();
+		while (autoPeriod > autoTimer.Get()){
+		drive.TankDrive(-0.5,-0.5,0);
+	}
 	}
 
 	void TeleopInit() {
+		intakeRun = false;
+		intakeLast = false;
 
+		shooterTimer.Stop();
+		shooterTimer.Reset();
 	}
 
 	void TeleopPeriodic() {
-		if (stick1.GetButton(frc::Joystick::ButtonType::kTriggerButton)) {
-			this->agitator.Set(1);
+
+		drive.TankDrive(stick1,stick2,false);
+
+
+//////////////////////////////Shooter/////////////////////////
+		if (stick2.GetButton(frc::Joystick::ButtonType::kTriggerButton)) {
+			shooterTimer.Start();
+			this->shooter.Set(.9);
+			if (agitatorDelay < shooterTimer.Get()){
+				this->agitator.Set(0.2);
+			}
+		}
+		else if (stick2.GetRawButton(4)){
+			shooterTimer.Start();
+			if (revAgitator > shooterTimer.Get()){
+				this->agitator.Set(-0.2);
+			}
+			else {
+				this->agitator.Set(0);
+			}
 		}
 		else {
+			shooterTimer.Stop();
+			shooterTimer.Reset();
 			this->agitator.Set(0);
+			this->shooter.Set(0);
 		}
 
-		if(stick1.GetRawButton(8)) {
-			this ->leftDrive2.Set(1);
+	/////////////////////////////Intake///////////////////////////
+		if(intakeLast == false && stick2.GetRawButton(2)) {
+			if(intakeRun == true ) {
+				this ->intake.Set(0);
+				intakeRun = false;
+			} else {
+				this->intake.Set(-.5);
+				intakeRun = true;
+			}
 		}
-		else {
-			this->leftDrive2.Set(0);
+
+		intakeLast = stick2.GetRawButton(2);
+
+	//////////////////////////Lift/////////////////
+		if (stick2.GetRawButton(3)){
+			this->lift.Set(.7);}
+		else{
+			this->lift.Set(0);
 		}
+
 	}
+
+
+
 
 	void TestPeriodic() {
 		lw->Run();
